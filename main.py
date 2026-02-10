@@ -5,9 +5,8 @@ from pathlib import Path
 
 import pyperclip
 import typer
+from argon2.low_level import Type, hash_secret_raw
 from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 PASS_DIR = Path.home() / ".sspm"
 
@@ -26,15 +25,17 @@ def get_salt() -> bytes:
 
 
 def get_key(salt: bytes, master_password: bytes) -> bytes:
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
+    hash = hash_secret_raw(
+        secret=master_password,
         salt=salt,
-        iterations=120000,
+        time_cost=2,
+        memory_cost=65536,
+        parallelism=4,
+        hash_len=32,
+        type=Type.ID,
     )
 
-    key = base64.urlsafe_b64encode(kdf.derive(master_password))
-    return key
+    return base64.urlsafe_b64encode(hash)
 
 
 def get_fernet() -> Fernet:
