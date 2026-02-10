@@ -28,7 +28,7 @@ def get_key(salt: bytes, master_password: bytes) -> bytes:
     hash = hash_secret_raw(
         secret=master_password,
         salt=salt,
-        time_cost=2,
+        time_cost=3,
         memory_cost=65536,
         parallelism=4,
         hash_len=32,
