@@ -66,7 +66,6 @@ def save_password(crypt: AESGCM, name: str, password: str, aad=None) -> None:
     full_path = full_dir / p.name
 
     if full_path.resolve() != full_path:
-        print(full_path.resolve(), full_path)
         print("Invalid directory")
         return
 
@@ -173,6 +172,9 @@ def list() -> None:
 def rm(name: str) -> None:
     p = Path(name)
     full_path = PASS_DIR / p
+
+    if full_path.resolve() != full_path:
+        print("Invalid directory")
 
     try:
         os.remove(full_path)
