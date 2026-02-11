@@ -59,12 +59,16 @@ def validate_master(crypt: AESGCM) -> None:
     exit()
 
 
-# TODO: Validar se o user está tentando sair do diretório (../name)
 def save_password(crypt: AESGCM, name: str, password: str, aad=None) -> None:
     p = Path(name)
     dir_path = p.parent
     full_dir = PASS_DIR / dir_path
     full_path = full_dir / p.name
+
+    if full_path.resolve() != full_path:
+        print(full_path.resolve(), full_path)
+        print("Invalid directory")
+        return
 
     if dir_path != ".":
         full_dir.mkdir(parents=True, exist_ok=True)
