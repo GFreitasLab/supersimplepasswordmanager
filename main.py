@@ -5,6 +5,7 @@ from pathlib import Path
 import pyperclip
 import typer
 from argon2.low_level import Type, hash_secret_raw
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 PASS_DIR = Path.home() / ".sspm"
@@ -45,16 +46,17 @@ def get_crypt() -> AESGCM:
     return AESGCM(key)
 
 
-# TODO: Refazer
-# def validate_master(crypt: AESGCM) -> None:
-#     try:
-#         with open(PASS_DIR / "validator", "rb") as arq:
-#             validator = arq.read()
-#             f.decrypt(validator)
-#         return
-#     except InvalidToken:
-#         print("Wrong password")
-#     exit()
+def validate_master(crypt: AESGCM) -> None:
+    try:
+        with open(PASS_DIR / "validator", "rb") as arq:
+            content = arq.read()
+            nonce = content[:12]
+            ciphertext = content[12:]
+            crypt.decrypt(nonce, ciphertext, b"auth").decode()
+        return
+    except InvalidTag:
+        print("Wrong password")
+    exit()
 
 
 # TODO: Validar se o user está tentando sair do diretório (../name)
@@ -101,11 +103,8 @@ def init() -> None:
     except OSError:
         print("Password folder already exists")
         return
-    # crypt = get_crypt()
-    # validator = f.encrypt(os.urandom(16))
 
-    # with open(f"{PASS_DIR}/validator", "wb") as f:
-    #     f.write(validator)
+    save_password(get_crypt(), "validator", str(os.urandom(16)), b"auth")
 
     print(f"Password Manager initialized sucessfully at: {PASS_DIR}")
     return
@@ -185,7 +184,7 @@ def main(ctx: typer.Context) -> None:
         exit()
 
     crypt = get_crypt()
-    # validate_master(crypt)
+    validate_master(crypt)
     ctx.obj = crypt
 
 
