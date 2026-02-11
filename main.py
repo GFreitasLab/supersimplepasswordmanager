@@ -166,12 +166,15 @@ def list() -> None:
     return
 
 
-# TODO: Remover arquivo e pasta (se estiver vazia)
 @app.command()
 def rm(name: str) -> None:
+    p = Path(name)
+    full_path = PASS_DIR / p
+
     try:
-        os.remove(PASS_DIR / name / "password")
-        os.removedirs(PASS_DIR / name)
+        os.remove(full_path)
+        if full_path.parent != PASS_DIR:
+            os.removedirs(full_path.parent)
         print("Password removed sucessfully")
     except OSError:
         print("Password not found")
