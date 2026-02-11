@@ -142,20 +142,23 @@ def show(ctx: typer.Context, name: str) -> None:
     return
 
 
-# TODO: Exibir arquivos e diretórios
-def tree(base_dir: Path, pref: str = "   ", lv: int = 0) -> None:
-    dirs = sorted([item for item in base_dir.iterdir() if item.is_dir()])
+def tree(base_dir: Path, prefix: str = "") -> None:
+    items = sorted(
+        [it for it in base_dir.iterdir() if it.name not in ["salt", "validator"]]
+    )
 
-    if not dirs:
-        return
+    for i, item in enumerate(items):
+        is_last = i == len(items) - 1
+        connector = "└── " if is_last else "├── "
 
-    dirs_size = len(dirs)
-    for i in range(0, dirs_size):
-        if i < dirs_size - 1:
-            print(f"{pref * lv}├── {dirs[i].name}")
-            tree(dirs[i], "│   ", lv + 1)
+        if item.is_dir():
+            typer.echo(f"{prefix}{connector}", nl=False)
+            typer.secho(f"{item.name}", fg=typer.colors.BLUE, bold=True)
+
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            tree(item, new_prefix)
         else:
-            print(f"{pref * lv}└── {dirs[i].name}")
+            print(f"{prefix}{connector}{item.name}")
     return
 
 
