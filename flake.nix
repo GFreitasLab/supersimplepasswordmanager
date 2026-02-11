@@ -13,6 +13,7 @@
       devShells.${system}.default = pkgs.mkShell {
         buildInputs = with pkgs; [
           python313
+          python313Packages.pip
           python313Packages.cryptography
           python313Packages.typer
           python313Packages.argon2-cffi
