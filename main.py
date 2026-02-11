@@ -1,4 +1,3 @@
-import base64
 import getpass
 import os
 from pathlib import Path
@@ -6,7 +5,7 @@ from pathlib import Path
 import pyperclip
 import typer
 from argon2.low_level import Type, hash_secret_raw
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 PASS_DIR = Path.home() / ".sspm"
 
@@ -35,49 +34,63 @@ def get_key(salt: bytes, master_password: bytes) -> bytes:
         type=Type.ID,
     )
 
-    return base64.urlsafe_b64encode(hash)
+    return hash
 
 
-def get_fernet() -> Fernet:
+def get_crypt() -> AESGCM:
     master_password = getpass.getpass(prompt="Master Password: ").encode()
     salt = get_salt()
     key = get_key(salt, master_password)
-    return Fernet(key)
+
+    return AESGCM(key)
 
 
-def validate_master(f: Fernet) -> None:
-    try:
-        with open(PASS_DIR / "validator", "rb") as arq:
-            validator = arq.read()
-            f.decrypt(validator)
-        return
-    except InvalidToken:
-        print("Wrong password")
-    exit()
+# TODO: Refazer
+# def validate_master(crypt: AESGCM) -> None:
+#     try:
+#         with open(PASS_DIR / "validator", "rb") as arq:
+#             validator = arq.read()
+#             f.decrypt(validator)
+#         return
+#     except InvalidToken:
+#         print("Wrong password")
+#     exit()
 
 
-def save_password(dir: str, password: bytes) -> None:
-    try:
-        os.makedirs(PASS_DIR / dir)
-    except OSError:
-        opt = str(input(f"A password already exists for {dir}. Overwrite it? [Y/n] "))
-        if opt.lower() != "y":
-            print("Save canceled")
+# TODO: Validar se o user está tentando sair do diretório (../name)
+def save_password(crypt: AESGCM, name: str, password: str, aad=None) -> None:
+    p = Path(name)
+    dir_path = p.parent
+    full_dir = PASS_DIR / dir_path
+    full_path = full_dir / p.name
+
+    if dir_path != ".":
+        full_dir.mkdir(parents=True, exist_ok=True)
+
+    if full_path.exists():
+        l = str(input(f"Password already exists for {full_path}. Overwrite it? [y/N]"))
+        if l.lower() != "y":
             return
-    with open(PASS_DIR / dir / "password", "wb") as arq:
-        arq.write(password)
-    print(f"Password for {dir} saved sucessfully")
+
+    nonce = os.urandom(12)
+    ct = crypt.encrypt(nonce, password.encode(), aad)
+
+    with open(full_path, "wb") as arq:
+        arq.write(nonce + ct)
+    print(f"Password {name} saved sucessfully")
     return
 
 
-def load_password(dir: str, f: Fernet) -> str:
+def load_password(name: str, crypt: AESGCM, aad=None) -> str:
     try:
-        with open(PASS_DIR / dir / "password", "rb") as arq:
-            encrypted_password = arq.read()
-            password = f.decrypt(encrypted_password).decode()
+        with open(PASS_DIR / name, "rb") as arq:
+            content = arq.read()
+            nonce = content[:12]
+            ciphertext = content[12:]
+            password = crypt.decrypt(nonce, ciphertext, aad).decode()
         return password
     except:
-        print(f"Password in {dir} not found")
+        print(f"Password {name} not found")
         exit()
 
 
@@ -88,11 +101,11 @@ def init() -> None:
     except OSError:
         print("Password folder already exists")
         return
-    f = get_fernet()
-    validator = f.encrypt(os.urandom(16))
+    # crypt = get_crypt()
+    # validator = f.encrypt(os.urandom(16))
 
-    with open(f"{PASS_DIR}/validator", "wb") as f:
-        f.write(validator)
+    # with open(f"{PASS_DIR}/validator", "wb") as f:
+    #     f.write(validator)
 
     print(f"Password Manager initialized sucessfully at: {PASS_DIR}")
     return
@@ -100,13 +113,12 @@ def init() -> None:
 
 @app.command()
 def add(ctx: typer.Context, name: str) -> None:
-    f = ctx.obj
+    crypt = ctx.obj
     password = getpass.getpass(prompt=f"Enter password for {name}: ")
     confirm_password = getpass.getpass(prompt=f"Retype password for {name}: ")
 
     if password == confirm_password:
-        encrypted_data = f.encrypt(password.encode())
-        save_password(name, encrypted_data)
+        save_password(crypt, name, password)
     else:
         print("Passwords don't matches")
     return
@@ -114,19 +126,20 @@ def add(ctx: typer.Context, name: str) -> None:
 
 @app.command()
 def get(ctx: typer.Context, name: str) -> None:
-    f = ctx.obj
-    pyperclip.copy(load_password(name, f))
+    crypt = ctx.obj
+    pyperclip.copy(load_password(name, crypt))
     print("Password copied to clipboard")
     return
 
 
 @app.command()
 def show(ctx: typer.Context, name: str) -> None:
-    f = ctx.obj
-    print(load_password(name, f))
+    crypt = ctx.obj
+    print(load_password(name, crypt))
     return
 
 
+# TODO: Exibir arquivos e diretórios
 def tree(base_dir: Path, pref: str = "   ", lv: int = 0) -> None:
     dirs = sorted([item for item in base_dir.iterdir() if item.is_dir()])
 
@@ -150,6 +163,7 @@ def list() -> None:
     return
 
 
+# TODO: Remover arquivo e pasta (se estiver vazia)
 @app.command()
 def rm(name: str) -> None:
     try:
@@ -170,9 +184,9 @@ def main(ctx: typer.Context) -> None:
         print("Password manager not found, create with [init]")
         exit()
 
-    f = get_fernet()
-    validate_master(f)
-    ctx.obj = f
+    crypt = get_crypt()
+    # validate_master(crypt)
+    ctx.obj = crypt
 
 
 if __name__ == "__main__":
