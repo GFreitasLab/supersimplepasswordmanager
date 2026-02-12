@@ -14,13 +14,14 @@ app = typer.Typer()
 
 
 def get_salt() -> bytes:
-    try:
-        with open(PASS_DIR / "salt", "rb") as arq:
-            salt = arq.read()
-    except:
+    if (PASS_DIR / "salt").exists():
         salt = os.urandom(16)
         with open(PASS_DIR / "salt", "wb") as arq:
             arq.write(salt)
+
+    with open(PASS_DIR / "salt", "rb") as arq:
+        salt = arq.read()
+
     return salt
 
 
