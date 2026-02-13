@@ -1,13 +1,15 @@
 import getpass
 import os
+import secrets
+import string
 from pathlib import Path
 
 import pyperclip
 import typer
-from rich import print
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from rich import print
 from rich.console import Console
 
 PASS_DIR = Path.home() / ".sspm"
@@ -59,6 +61,7 @@ def validate_master(crypt: AESGCM) -> None:
         err_console.print("[bold red]Wrong password![/bold red]")
     return
 
+
 def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = None) -> None:
     p = Path(name)
     dir_path = p.parent
@@ -67,7 +70,7 @@ def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = N
 
     if full_path.resolve() != full_path:
         err_console.print("[bold red]Invalid directory![/bold red]")
-        return
+        typer.Exit()
 
     if dir_path != ".":
         full_dir.mkdir(parents=True, exist_ok=True)
@@ -144,6 +147,19 @@ def get(ctx: typer.Context, name: str) -> None:
 
 
 @app.command()
+def gen(ctx: typer.Context, name: str) -> None:
+    """
+    Generate a random password with NAME
+    """
+    crypt = ctx.obj
+    alphabet = string.ascii_letters + string.digits
+    password = "".join(secrets.choice(alphabet) for i in range(20))
+    save_password(crypt, name, password)
+    print(f"Password generated at: {name}")
+    return
+
+
+@app.command()
 def show(ctx: typer.Context, name: str) -> None:
     """
     Display password in terminal with NAME
@@ -208,9 +224,10 @@ def main(ctx: typer.Context) -> None:
         return
 
     if not os.path.isdir(PASS_DIR):
-        err_console.print("[bold red]Password manager not found, create with [init][/bold red]")
+        err_console.print(
+            "[bold red]Password manager not found, create with [init][/bold red]"
+        )
         return
-
 
     crypt = get_crypt()
     validate_master(crypt)
