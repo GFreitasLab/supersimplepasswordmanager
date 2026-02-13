@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pyperclip
 import typer
-import rich
+from rich import print
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -25,7 +25,6 @@ def get_salt() -> bytes:
 
     with open(PASS_DIR / "salt", "rb") as arq:
         salt = arq.read()
-
     return salt
 
 
@@ -39,7 +38,6 @@ def get_key(salt: bytes, master_password: bytes) -> bytes:
         hash_len=32,
         type=Type.ID,
     )
-
     return hash
 
 
@@ -47,7 +45,6 @@ def get_crypt() -> AESGCM:
     master_password = getpass.getpass(prompt="Master Password: ").encode()
     salt = get_salt()
     key = get_key(salt, master_password)
-
     return AESGCM(key)
 
 
@@ -58,10 +55,9 @@ def validate_master(crypt: AESGCM) -> None:
             nonce = content[:12]
             ciphertext = content[12:]
             crypt.decrypt(nonce, ciphertext, b"auth").decode()
-        return
     except InvalidTag:
         err_console.print("[bold red]Wrong password![/bold red]")
-
+    return
 
 def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = None) -> None:
     p = Path(name)
@@ -105,6 +101,9 @@ def load_password(name: str, crypt: AESGCM, aad: bytes | None = None) -> str:
 
 @app.command()
 def init() -> None:
+    """
+    Initalize the vault
+    """
     try:
         os.mkdir(PASS_DIR)
     except OSError:
@@ -119,6 +118,9 @@ def init() -> None:
 
 @app.command()
 def add(ctx: typer.Context, name: str) -> None:
+    """
+    Add or overwrite a password with NAME
+    """
     crypt = ctx.obj
     password = getpass.getpass(prompt=f"Enter password for {name}: ")
     confirm_password = getpass.getpass(prompt=f"Retype password for {name}: ")
@@ -132,6 +134,9 @@ def add(ctx: typer.Context, name: str) -> None:
 
 @app.command()
 def get(ctx: typer.Context, name: str) -> None:
+    """
+    Copy password to clipboard with NAME
+    """
     crypt = ctx.obj
     pyperclip.copy(load_password(name, crypt))
     print("Password copied to clipboard")
@@ -140,6 +145,9 @@ def get(ctx: typer.Context, name: str) -> None:
 
 @app.command()
 def show(ctx: typer.Context, name: str) -> None:
+    """
+    Display password in terminal with NAME
+    """
     crypt = ctx.obj
     print(load_password(name, crypt))
     return
@@ -155,7 +163,7 @@ def tree(base_dir: Path, prefix: str = "") -> None:
         connector = "└── " if is_last else "├── "
 
         if item.is_dir():
-            rich.print(f"{prefix}{connector}[bold blue]{item.name}[/bold blue]")
+            print(f"{prefix}{connector}[bold blue]{item.name}[/bold blue]")
             new_prefix = prefix + ("    " if is_last else "│   ")
             tree(item, new_prefix)
         else:
@@ -165,6 +173,9 @@ def tree(base_dir: Path, prefix: str = "") -> None:
 
 @app.command()
 def list() -> None:
+    """
+    List all password in a tree format
+    """
     print("Passwords")
     tree(PASS_DIR)
     return
@@ -172,6 +183,9 @@ def list() -> None:
 
 @app.command()
 def rm(name: str) -> None:
+    """
+    Delete a password entry with NAME
+    """
     p = Path(name)
     full_path = PASS_DIR / p
 
@@ -195,7 +209,8 @@ def main(ctx: typer.Context) -> None:
 
     if not os.path.isdir(PASS_DIR):
         err_console.print("[bold red]Password manager not found, create with [init][/bold red]")
-        typer.Exit()
+        return
+
 
     crypt = get_crypt()
     validate_master(crypt)
