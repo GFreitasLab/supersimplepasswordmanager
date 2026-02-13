@@ -4,17 +4,21 @@ from pathlib import Path
 
 import pyperclip
 import typer
+import rich
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from rich.console import Console
 
 PASS_DIR = Path.home() / ".sspm"
+
+err_console = Console(stderr=True)
 
 app = typer.Typer()
 
 
 def get_salt() -> bytes:
-    if (PASS_DIR / "salt").exists():
+    if not (PASS_DIR / "salt").exists():
         salt = os.urandom(16)
         with open(PASS_DIR / "salt", "wb") as arq:
             arq.write(salt)
@@ -56,18 +60,17 @@ def validate_master(crypt: AESGCM) -> None:
             crypt.decrypt(nonce, ciphertext, b"auth").decode()
         return
     except InvalidTag:
-        print("Wrong password")
-    exit()
+        err_console.print("[bold red]Wrong password![/bold red]")
 
 
-def save_password(crypt: AESGCM, name: str, password: str, aad=None) -> None:
+def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = None) -> None:
     p = Path(name)
     dir_path = p.parent
     full_dir = PASS_DIR / dir_path
     full_path = full_dir / p.name
 
     if full_path.resolve() != full_path:
-        print("Invalid directory")
+        err_console.print("[bold red]Invalid directory![/bold red]")
         return
 
     if dir_path != ".":
@@ -87,17 +90,17 @@ def save_password(crypt: AESGCM, name: str, password: str, aad=None) -> None:
     return
 
 
-def load_password(name: str, crypt: AESGCM, aad=None) -> str:
-    try:
-        with open(PASS_DIR / name, "rb") as arq:
-            content = arq.read()
-            nonce = content[:12]
-            ciphertext = content[12:]
-            password = crypt.decrypt(nonce, ciphertext, aad).decode()
-        return password
-    except:
-        print(f"Password {name} not found")
-        exit()
+def load_password(name: str, crypt: AESGCM, aad: bytes | None = None) -> str:
+    if not (PASS_DIR / name).exists():
+        err_console.print(f"[bold red]Password {name} not found[/bold red]")
+        typer.Exit()
+
+    with open(PASS_DIR / name, "rb") as arq:
+        content = arq.read()
+        nonce = content[:12]
+        ciphertext = content[12:]
+        password = crypt.decrypt(nonce, ciphertext, aad).decode()
+    return password
 
 
 @app.command()
@@ -105,7 +108,7 @@ def init() -> None:
     try:
         os.mkdir(PASS_DIR)
     except OSError:
-        print("Password folder already exists")
+        err_console.print("[bold red]Password folder already exists[/bold red]")
         return
 
     save_password(get_crypt(), "validator", str(os.urandom(16)), b"auth")
@@ -123,7 +126,7 @@ def add(ctx: typer.Context, name: str) -> None:
     if password == confirm_password:
         save_password(crypt, name, password)
     else:
-        print("Passwords don't matches")
+        err_console.print("[bold red]Passwords don't matches[/bold red]")
     return
 
 
@@ -152,9 +155,7 @@ def tree(base_dir: Path, prefix: str = "") -> None:
         connector = "└── " if is_last else "├── "
 
         if item.is_dir():
-            typer.echo(f"{prefix}{connector}", nl=False)
-            typer.secho(f"{item.name}", fg=typer.colors.BLUE, bold=True)
-
+            rich.print(f"{prefix}{connector}[bold blue]{item.name}[/bold blue]")
             new_prefix = prefix + ("    " if is_last else "│   ")
             tree(item, new_prefix)
         else:
@@ -175,7 +176,7 @@ def rm(name: str) -> None:
     full_path = PASS_DIR / p
 
     if full_path.resolve() != full_path:
-        print("Invalid directory")
+        err_console.print("[bold red]Invalid directory![/bold red]")
 
     try:
         os.remove(full_path)
@@ -183,7 +184,7 @@ def rm(name: str) -> None:
             os.removedirs(full_path.parent)
         print("Password removed sucessfully")
     except OSError:
-        print("Password not found")
+        err_console.print("[bold red]Password not found[/bold red]")
     return
 
 
@@ -193,8 +194,8 @@ def main(ctx: typer.Context) -> None:
         return
 
     if not os.path.isdir(PASS_DIR):
-        print("Password manager not found, create with [init]")
-        exit()
+        err_console.print("[bold red]Password manager not found, create with [init][/bold red]")
+        typer.Exit()
 
     crypt = get_crypt()
     validate_master(crypt)
