@@ -218,11 +218,20 @@ def remove(name: str) -> None:
 
     try:
         os.remove(full_path)
-        if full_path.parent != PASS_DIR:
-            os.removedirs(full_path.parent)
         print("Password removed sucessfully")
-    except OSError:
+
+        current_dir = full_path.parent
+
+        while current_dir != PASS_DIR and current_dir.is_relative_to(PASS_DIR):
+            if not any(current_dir.iterdir()):
+                current_dir.rmdir()
+                current_dir = current_dir.parent
+            else:
+                break
+    except FileNotFoundError:
         err_console.print("[bold red]Password not found[/bold red]")
+    except OSError as e:
+        err_console.print(f"[bold red]Could not delete: {e}[/bold red]")
     return
 
 
