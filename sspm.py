@@ -57,9 +57,10 @@ def validate_master(crypt: AESGCM) -> None:
             nonce = content[:12]
             ciphertext = content[12:]
             crypt.decrypt(nonce, ciphertext, b"auth").decode()
+        return
     except InvalidTag:
         err_console.print("[bold red]Wrong password![/bold red]")
-    return
+        typer.Exit()
 
 
 def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = None) -> None:
@@ -76,16 +77,15 @@ def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = N
         full_dir.mkdir(parents=True, exist_ok=True)
 
     if full_path.exists():
-        l = str(input(f"Password already exists for {full_path}. Overwrite it? [y/N]"))
+        l = str(input(f"Password already exists for {full_path}. Overwrite it? [y/N] "))
         if l.lower() != "y":
-            return
+            typer.Exit()
 
     nonce = os.urandom(12)
     ct = crypt.encrypt(nonce, password.encode(), aad)
 
     with open(full_path, "wb") as arq:
         arq.write(nonce + ct)
-    print(f"Password {name} saved sucessfully")
     return
 
 
@@ -130,6 +130,7 @@ def add(ctx: typer.Context, name: str) -> None:
 
     if password == confirm_password:
         save_password(crypt, name, password)
+        print(f"Password {name} saved sucessfully")
     else:
         err_console.print("[bold red]Passwords don't matches[/bold red]")
     return
@@ -152,10 +153,10 @@ def gen(ctx: typer.Context, name: str) -> None:
     Generate a random password with NAME
     """
     crypt = ctx.obj
-    alphabet = string.ascii_letters + string.digits
-    password = "".join(secrets.choice(alphabet) for i in range(20))
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    password = "".join(secrets.choice(alphabet) for _ in range(20))
     save_password(crypt, name, password)
-    print(f"Password generated at: {name}")
+    print(f"The password generated for {name} is: \n {password}")
     return
 
 
@@ -207,6 +208,11 @@ def rm(name: str) -> None:
 
     if full_path.resolve() != full_path:
         err_console.print("[bold red]Invalid directory![/bold red]")
+
+    l = str(input(f"Are you sure you would like to delete {name}? [y/N] "))
+
+    if l.lower() != "y":
+        return
 
     try:
         os.remove(full_path)
