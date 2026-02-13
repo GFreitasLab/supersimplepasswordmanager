@@ -70,13 +70,14 @@ python sspm.py init
 
 2. Managing passwords
 
-| Command | Description                         | Example                        |
-| ------- | ----------------------------------- | ------------------------------ |
-| add     | Add or overwrite a password         | python sspm.py add work/email  |
-| get     | Copy password to clipboard          | python sspm.py get work/email  |
-| show    | Display password in terminal        | python sspm.py show work/email |
-| list    | List all passwords in a tree format | python sspm.py list            |
-| rm      | Delete a password entry             | python sspm.py rm work/email   |
+| Command  | Description                         | Example                            |
+| -------- | ----------------------------------- | ---------------------------------- |
+| insert   | Add or overwrite a password         | python sspm.py add work/email      |
+| copy     | Copy password to clipboard          | python sspm.py get work/email      |
+| generate | Generate a random password          | python sspm.py generate work/email |
+| show     | Display password in terminal        | python sspm.py show work/email     |
+| list     | List all passwords in a tree format | python sspm.py list                |
+| remove   | Delete a password entry             | python sspm.py rm work/email       |
 
 ---
 
