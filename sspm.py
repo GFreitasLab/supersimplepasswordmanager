@@ -63,7 +63,9 @@ def validate_master(crypt: AESGCM) -> None:
         typer.Exit()
 
 
-def save_password(crypt: AESGCM, name: str, password: str, aad: bytes | None = None) -> None:
+def save_password(
+    crypt: AESGCM, name: str, password: str, aad: bytes | None = None
+) -> None:
     p = Path(name)
     dir_path = p.parent
     full_dir = PASS_DIR / dir_path
@@ -120,7 +122,7 @@ def init() -> None:
 
 
 @app.command()
-def add(ctx: typer.Context, name: str) -> None:
+def insert(ctx: typer.Context, name: str) -> None:
     """
     Add or overwrite a password with NAME
     """
@@ -137,7 +139,7 @@ def add(ctx: typer.Context, name: str) -> None:
 
 
 @app.command()
-def get(ctx: typer.Context, name: str) -> None:
+def copy(ctx: typer.Context, name: str) -> None:
     """
     Copy password to clipboard with NAME
     """
@@ -148,7 +150,7 @@ def get(ctx: typer.Context, name: str) -> None:
 
 
 @app.command()
-def gen(ctx: typer.Context, name: str) -> None:
+def generate(ctx: typer.Context, name: str) -> None:
     """
     Generate a random password with NAME
     """
@@ -199,7 +201,7 @@ def list() -> None:
 
 
 @app.command()
-def rm(name: str) -> None:
+def remove(name: str) -> None:
     """
     Delete a password entry with NAME
     """
