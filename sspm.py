@@ -2,6 +2,7 @@ import getpass
 import os
 import secrets
 import string
+import subprocess
 from pathlib import Path
 
 import pyperclip
@@ -104,6 +105,34 @@ def load_password(name: str, crypt: AESGCM, aad: bytes | None = None) -> str:
     return password
 
 
+def tree(base_dir: Path, prefix: str = "") -> None:
+    items = sorted(
+        [it for it in base_dir.iterdir() if it.name not in ["salt", "validator"]]
+    )
+
+    for i, item in enumerate(items):
+        is_last = i == len(items) - 1
+        connector = "└── " if is_last else "├── "
+
+        if item.is_dir():
+            print(f"{prefix}{connector}[bold blue]{item.name}[/bold blue]")
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            tree(item, new_prefix)
+        else:
+            print(f"{prefix}{connector}{item.name}")
+    return
+
+
+def git_auto_commit(msg: str, item: str):
+    if (PASS_DIR / ".git").exists():
+        subprocess.run(["git", "-C", str(PASS_DIR), "add", "."], capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(PASS_DIR), "commit", "-m", f"{msg}: {item}"],
+            capture_output=True,
+        )
+    return
+
+
 @app.command()
 def init() -> None:
     """
@@ -133,6 +162,7 @@ def insert(ctx: typer.Context, name: str) -> None:
     if password == confirm_password:
         save_password(crypt, name, password)
         print(f"Password {name} saved sucessfully")
+        git_auto_commit("insert", name)
     else:
         err_console.print("[bold red]Passwords don't matches[/bold red]")
     return
@@ -159,6 +189,7 @@ def generate(ctx: typer.Context, name: str) -> None:
     password = "".join(secrets.choice(alphabet) for _ in range(20))
     save_password(crypt, name, password)
     print(f"The password generated for {name} is: \n {password}")
+    git_auto_commit("generate", name)
     return
 
 
@@ -169,24 +200,6 @@ def show(ctx: typer.Context, name: str) -> None:
     """
     crypt = ctx.obj
     print(load_password(name, crypt))
-    return
-
-
-def tree(base_dir: Path, prefix: str = "") -> None:
-    items = sorted(
-        [it for it in base_dir.iterdir() if it.name not in ["salt", "validator"]]
-    )
-
-    for i, item in enumerate(items):
-        is_last = i == len(items) - 1
-        connector = "└── " if is_last else "├── "
-
-        if item.is_dir():
-            print(f"{prefix}{connector}[bold blue]{item.name}[/bold blue]")
-            new_prefix = prefix + ("    " if is_last else "│   ")
-            tree(item, new_prefix)
-        else:
-            print(f"{prefix}{connector}{item.name}")
     return
 
 
@@ -228,10 +241,32 @@ def remove(name: str) -> None:
                 current_dir = current_dir.parent
             else:
                 break
+        git_auto_commit("remove", name)
     except FileNotFoundError:
         err_console.print("[bold red]Password not found[/bold red]")
     except OSError as e:
         err_console.print(f"[bold red]Could not delete: {e}[/bold red]")
+    return
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def git(ctx: typer.Context):
+    if not PASS_DIR.exists():
+        err_console.print("[bold red]Password directory does not exist[/bold red]")
+        return
+
+    command = ["git", "-C", str(PASS_DIR)] + ctx.args
+
+    try:
+        result = subprocess.run(command, check=False)
+        if result.returncode != 0:
+            err_console.print(
+                f"[bold red]Git command failed with code {result.returncode}[/bold red]"
+            )
+    except FileNotFoundError:
+        err_console.print("[bold red]Git not found. Is it installed?[/bold red]")
     return
 
 
