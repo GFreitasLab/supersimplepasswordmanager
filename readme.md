@@ -11,6 +11,7 @@
 - **Bank-Grade Security:** Authenticated encryption to guarantee both data integrity and confidentiality.
 - **Folder Hierarchy:** Organize your passwords using logical paths (e.g., work/email).
 - **Clipboard Integration:** Copy passwords directly to your clipboard without exposing them on your screen.
+- **Git Integration:** Version your passwords automatically with Git.
 
 ---
 
@@ -68,16 +69,23 @@ Set up your master password and Initialize the vault:
 python sspm.py init
 ```
 
+Optionaly you can set Git:
+
+```bash
+python sspm.py git init
+```
+
 2. Managing passwords
 
 | Command  | Description                         | Example                            |
 | -------- | ----------------------------------- | ---------------------------------- |
-| insert   | Add or overwrite a password         | python sspm.py add work/email      |
-| copy     | Copy password to clipboard          | python sspm.py get work/email      |
+| insert   | Add or overwrite a password         | python sspm.py insert work/email   |
+| copy     | Copy password to clipboard          | python sspm.py copy work/email     |
 | generate | Generate a random password          | python sspm.py generate work/email |
 | show     | Display password in terminal        | python sspm.py show work/email     |
 | list     | List all passwords in a tree format | python sspm.py list                |
-| remove   | Delete a password entry             | python sspm.py rm work/email       |
+| remove   | Delete a password entry             | python sspm.py remove work/email   |
+| git      | Allow use git commands              | python sspm.py git log             |
 
 ---
 
@@ -85,8 +93,9 @@ python sspm.py init
 
 ```
 ~/.sspm/
-├── salt        # Unique salt for Argon2
-├── validator   # Encrypted marker to validate master password
+├── .salt       # Unique salt for Argon2
+├── .validator  # Encrypted marker to validate master password
+├── .git/       # git folder (if created)
 └── work/       # Your custom directories
     └── email   # Encrypted data (Nonce + Ciphertext)
 ```
