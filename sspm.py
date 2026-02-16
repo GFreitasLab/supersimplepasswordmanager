@@ -1,264 +1,88 @@
-import getpass
 import os
 import secrets
 import string
 import subprocess
-from pathlib import Path
+from getpass import getpass
 
 import pyperclip
 import typer
-from argon2.low_level import Type, hash_secret_raw
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from rich import print
-from rich.console import Console
 
-PASS_DIR = Path.home() / ".sspm"
-
-err_console = Console(stderr=True)
+from core import PASS_DIR, Vault, err_console, list_tree
 
 app = typer.Typer()
-
-
-def get_salt() -> bytes:
-    if not (PASS_DIR / "salt").exists():
-        salt = os.urandom(16)
-        with open(PASS_DIR / "salt", "wb") as arq:
-            arq.write(salt)
-
-    with open(PASS_DIR / "salt", "rb") as arq:
-        salt = arq.read()
-    return salt
-
-
-def get_key(salt: bytes, master_password: bytes) -> bytes:
-    hash = hash_secret_raw(
-        secret=master_password,
-        salt=salt,
-        time_cost=3,
-        memory_cost=65536,
-        parallelism=4,
-        hash_len=32,
-        type=Type.ID,
-    )
-    return hash
-
-
-def get_crypt() -> AESGCM:
-    master_password = getpass.getpass(prompt="Master Password: ").encode()
-    salt = get_salt()
-    key = get_key(salt, master_password)
-    return AESGCM(key)
-
-
-def validate_master(crypt: AESGCM) -> None:
-    try:
-        with open(PASS_DIR / "validator", "rb") as arq:
-            content = arq.read()
-            nonce = content[:12]
-            ciphertext = content[12:]
-            crypt.decrypt(nonce, ciphertext, b"auth").decode()
-        return
-    except InvalidTag:
-        err_console.print("[bold red]Wrong password![/bold red]")
-        typer.Exit()
-
-
-def save_password(
-    crypt: AESGCM, name: str, password: str, aad: bytes | None = None
-) -> None:
-    p = Path(name)
-    dir_path = p.parent
-    full_dir = PASS_DIR / dir_path
-    full_path = full_dir / p.name
-
-    if full_path.resolve() != full_path:
-        err_console.print("[bold red]Invalid directory![/bold red]")
-        typer.Exit()
-
-    if dir_path != ".":
-        full_dir.mkdir(parents=True, exist_ok=True)
-
-    if full_path.exists():
-        l = str(input(f"Password already exists for {full_path}. Overwrite it? [y/N] "))
-        if l.lower() != "y":
-            typer.Exit()
-
-    nonce = os.urandom(12)
-    ct = crypt.encrypt(nonce, password.encode(), aad)
-
-    with open(full_path, "wb") as arq:
-        arq.write(nonce + ct)
-    return
-
-
-def load_password(name: str, crypt: AESGCM, aad: bytes | None = None) -> str:
-    if not (PASS_DIR / name).exists():
-        err_console.print(f"[bold red]Password {name} not found[/bold red]")
-        typer.Exit()
-
-    with open(PASS_DIR / name, "rb") as arq:
-        content = arq.read()
-        nonce = content[:12]
-        ciphertext = content[12:]
-        password = crypt.decrypt(nonce, ciphertext, aad).decode()
-    return password
-
-
-def tree(base_dir: Path, prefix: str = "") -> None:
-    items = sorted(
-        [it for it in base_dir.iterdir() if it.name not in ["salt", "validator"]]
-    )
-
-    for i, item in enumerate(items):
-        is_last = i == len(items) - 1
-        connector = "└── " if is_last else "├── "
-
-        if item.is_dir():
-            print(f"{prefix}{connector}[bold blue]{item.name}[/bold blue]")
-            new_prefix = prefix + ("    " if is_last else "│   ")
-            tree(item, new_prefix)
-        else:
-            print(f"{prefix}{connector}{item.name}")
-    return
-
-
-def git_auto_commit(msg: str, item: str):
-    if (PASS_DIR / ".git").exists():
-        subprocess.run(["git", "-C", str(PASS_DIR), "add", "."], capture_output=True)
-        subprocess.run(
-            ["git", "-C", str(PASS_DIR), "commit", "-m", f"{msg}: {item}"],
-            capture_output=True,
-        )
-    return
+vault = Vault()
 
 
 @app.command()
 def init() -> None:
-    """
-    Initalize the vault
-    """
-    try:
-        os.mkdir(PASS_DIR)
-    except OSError:
+    """Initalize the vault"""
+    if PASS_DIR.exists():
         err_console.print("[bold red]Password folder already exists[/bold red]")
         return
-
-    save_password(get_crypt(), "validator", str(os.urandom(16)), b"auth")
-
+    vault.initialize_master()
+    vault.save(".validator", os.urandom(16).hex(), b"auth")
     print(f"Password Manager initialized sucessfully at: {PASS_DIR}")
-    return
 
 
 @app.command()
-def insert(ctx: typer.Context, name: str) -> None:
-    """
-    Add or overwrite a password with NAME
-    """
-    crypt = ctx.obj
-    password = getpass.getpass(prompt=f"Enter password for {name}: ")
-    confirm_password = getpass.getpass(prompt=f"Retype password for {name}: ")
+def insert(name: str) -> None:
+    """Add or overwrite a password"""
+    pswd = getpass(prompt=f"Password for {name}: ")
 
-    if password == confirm_password:
-        save_password(crypt, name, password)
-        print(f"Password {name} saved sucessfully")
-        git_auto_commit("insert", name)
+    if pswd == getpass("Confirm: "):
+        vault.save(name, pswd)
     else:
         err_console.print("[bold red]Passwords don't matches[/bold red]")
-    return
 
 
 @app.command()
-def copy(ctx: typer.Context, name: str) -> None:
-    """
-    Copy password to clipboard with NAME
-    """
-    crypt = ctx.obj
-    pyperclip.copy(load_password(name, crypt))
+def copy(name: str) -> None:
+    """Copy password to clipboard"""
+    pyperclip.copy(vault.load(name))
     print("Password copied to clipboard")
-    return
 
 
 @app.command()
-def generate(ctx: typer.Context, name: str) -> None:
-    """
-    Generate a random password with NAME
-    """
-    crypt = ctx.obj
+def generate(name: str) -> None:
+    """Generate a random password"""
     alphabet = string.ascii_letters + string.digits + string.punctuation
-    password = "".join(secrets.choice(alphabet) for _ in range(20))
-    save_password(crypt, name, password)
-    print(f"The password generated for {name} is: \n {password}")
-    git_auto_commit("generate", name)
-    return
+    pswd = "".join(secrets.choice(alphabet) for _ in range(20))
+    vault.save(name, pswd)
+    print(f"The password generated for {name} is:\n{pswd}")
 
 
 @app.command()
-def show(ctx: typer.Context, name: str) -> None:
-    """
-    Display password in terminal with NAME
-    """
-    crypt = ctx.obj
-    print(load_password(name, crypt))
-    return
+def show(name: str) -> None:
+    """Display password in terminal"""
+    print(vault.load(name))
 
 
 @app.command()
 def list() -> None:
-    """
-    List all password in a tree format
-    """
+    """List all password in a tree format"""
     print("Passwords")
-    tree(PASS_DIR)
-    return
+    list_tree(PASS_DIR)
 
 
 @app.command()
 def remove(name: str) -> None:
-    """
-    Delete a password entry with NAME
-    """
-    p = Path(name)
-    full_path = PASS_DIR / p
-
-    if full_path.resolve() != full_path:
-        err_console.print("[bold red]Invalid directory![/bold red]")
-
+    """Delete a password entry"""
     l = str(input(f"Are you sure you would like to delete {name}? [y/N] "))
-
     if l.lower() != "y":
         return
-
-    try:
-        os.remove(full_path)
-        print("Password removed sucessfully")
-
-        current_dir = full_path.parent
-
-        while current_dir != PASS_DIR and current_dir.is_relative_to(PASS_DIR):
-            if not any(current_dir.iterdir()):
-                current_dir.rmdir()
-                current_dir = current_dir.parent
-            else:
-                break
-        git_auto_commit("remove", name)
-    except FileNotFoundError:
-        err_console.print("[bold red]Password not found[/bold red]")
-    except OSError as e:
-        err_console.print(f"[bold red]Could not delete: {e}[/bold red]")
-    return
+    vault.remove(name)
+    print(f"Password {name} removed sucessfully")
 
 
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
 def git(ctx: typer.Context):
+    """Uses git commands in vault directory"""
     if not PASS_DIR.exists():
         err_console.print("[bold red]Password directory does not exist[/bold red]")
         return
-
     command = ["git", "-C", str(PASS_DIR)] + ctx.args
-
     try:
         result = subprocess.run(command, check=False)
         if result.returncode != 0:
@@ -267,23 +91,17 @@ def git(ctx: typer.Context):
             )
     except FileNotFoundError:
         err_console.print("[bold red]Git not found. Is it installed?[/bold red]")
-    return
 
 
 @app.callback()
 def main(ctx: typer.Context) -> None:
-    if ctx.invoked_subcommand == "init":
-        return
-
-    if not os.path.isdir(PASS_DIR):
-        err_console.print(
-            "[bold red]Password manager not found, create with [init][/bold red]"
-        )
-        return
-
-    crypt = get_crypt()
-    validate_master(crypt)
-    ctx.obj = crypt
+    if ctx.invoked_subcommand != "init":
+        if not PASS_DIR.exists():
+            err_console.print(
+                "[bold red]Password manager not found, create with [init][/bold red]"
+            )
+            raise typer.Exit(1)
+        vault.initialize_master()
 
 
 if __name__ == "__main__":
